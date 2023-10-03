@@ -4,8 +4,11 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "Adafruit_BMP085.h"
-#include "SD.h"
+#include "SdFat.h"
 #include "SPI.h"
+
+//Use SDFat in order to utilize certain functions
+SdFat SD;
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -44,10 +47,7 @@ File dataFile;
 
 String fileName = "/Rocket00";
 
-const int chipSelect = 4;
-Sd2Card card;
-SdVolume volume;
-SdFile root;
+const int chipSelect = 5;
 
 void setup() {
 
@@ -62,6 +62,9 @@ void setup() {
     // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
     // it's really up to you depending on your project)
     Serial.begin(115200);
+    while (!Serial) {
+        ; // wait for serial port to connect. Needed for native USB port only
+    }
 
     if (!bmp.begin()) {
         Serial.println("Could not find a valid BMP085 sensor, check wiring!");
@@ -79,7 +82,7 @@ void setup() {
     Serial.println("Testing device connections...");
     Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
     accelgyro.setFullScaleAccelRange(3);
-    Serial.println(accelgyro.getFullScaleAccelRange());
+    //Serial.println(accelgyro.getFullScaleAccelRange());
 
     // use the code below to change accel/gyro offset values
     /*
@@ -105,11 +108,11 @@ void setup() {
     */
 
     // configure Arduino LED pin for output
-    pinMode(LED_PIN, OUTPUT);
+    //pinMode(LED_PIN, OUTPUT);
 
-     Serial.print("Initializing SD card...");
+    Serial.print("Initializing SD card...");
 
-     // see if the card is present and can be initialized:
+    // see if the card is present and can be initialized:
     if (!SD.begin(chipSelect)) {
         Serial.println("Card failed, or not present");
         // don't do anything more:
@@ -117,62 +120,16 @@ void setup() {
     }
     Serial.println("card initialized.");
 
-    // print the type of card
-    Serial.println();
-    Serial.print("Card type:         ");
-    switch(card.type()) {
-        case SD_CARD_TYPE_SD1:
-        Serial.println("SD1");
-        break;
-        case SD_CARD_TYPE_SD2:
-        Serial.println("SD2");
-        break;
-        case SD_CARD_TYPE_SDHC:
-        Serial.println("SDHC");
-        break;
-        default:
-        Serial.println("Unknown");
-    }
-
-    // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
-    if (!volume.init(card)) {
-        Serial.println("Could not find FAT16/FAT32 partition.\nMake sure you've formatted the card");
-        while (1);
-    }
-
-    // print the type and size of the first FAT-type volume
-    uint32_t volumesize;
-    Serial.print("Volume type is:    FAT");
-    Serial.println(volume.fatType(), DEC);
-
-    volumesize = volume.blocksPerCluster();    // clusters are collections of blocks
-    volumesize *= volume.clusterCount();       // we'll have a lot of clusters
-    volumesize /= 2;                           // SD card blocks are always 512 bytes (2 blocks are 1KB)
-    Serial.print("Volume size (Kb):  ");
-    Serial.println(volumesize);
-    Serial.print("Volume size (Mb):  ");
-    volumesize /= 1024;
-    Serial.println(volumesize);
-    Serial.print("Volume size (Gb):  ");
-    Serial.println((float)volumesize / 1024.0);
-
-    Serial.println("\nFiles found on the card (name, date and size in bytes): ");
-    root.openRoot(volume);
-
-    // list all files in the card with date and size
-    root.ls(LS_R | LS_DATE | LS_SIZE);
-
     for(int i = 1; i < 100; i++){
-        if(SD.exists(String(fileName + i + ".txt").c_str())){
-            dataFile = SD.open(String(fileName + (i+1) + ".txt").c_str(), FILE_WRITE);
-            break;
-        }
+      if(SD.exists(String(fileName + i + ".txt").c_str())){
+          dataFile = SD.open(String(fileName + (i+1) + ".txt").c_str(), FILE_WRITE);
+          break;
+      }
     }
-
-    //dataFile = SD.open("/Rocket001.txt", FILE_WRITE);
 
     if (!dataFile) {
         Serial.println("error opening datalog.txt");
+        while(1);
     }
 
     String headerString = "";
@@ -197,79 +154,75 @@ void setup() {
 }
 
 void loop() {
-  //unsigned long currentMillis = millis();
-  // read raw accel/gyro measurements from device
-  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  // these methods (and a few others) are also available
-  //accelgyro.getAcceleration(&ax, &ay, &az);
-  //accelgyro.getRotation(&gx, &gy, &gz);
+    // these methods (and a few others) are also available
+    // accelgyro.getAcceleration(&ax, &ay, &az);
+    // accelgyro.getRotation(&gx, &gy, &gz);
 
-  String dataString = "";
-  dataString += String(millis()).c_str();
-  dataString += "\t";
-  dataString += String(bmp.readAltitude(101500)).c_str();
-  dataString += "\t";
-  dataString += String(ax).c_str();
-  dataString += "\t";
-  dataString += String(ay).c_str();
-  dataString += "\t";
-  dataString += String(az).c_str();
-  dataString += "\t";
-  dataString += String(gx).c_str();
-  dataString += "\t";
-  dataString += String(gy).c_str();
-  dataString += "\t";
-  dataString += String(gz).c_str();
-  //dataString += "\n";
+    String dataString = "";
+    dataString += String(millis()).c_str();
+    dataString += "\t";
+    dataString += String(bmp.readAltitude(101500)).c_str();
+    dataString += "\t";
+    dataString += String(ax).c_str();
+    dataString += "\t";
+    dataString += String(ay).c_str();
+    dataString += "\t";
+    dataString += String(az).c_str();
+    dataString += "\t";
+    dataString += String(gx).c_str();
+    dataString += "\t";
+    dataString += String(gy).c_str();
+    dataString += "\t";
+    dataString += String(gz).c_str();
 
-  dataFile.println(dataString);
+    dataFile.println(dataString);
 
-  dataFile.flush();
+    dataFile.flush();
 
+    // #ifdef OUTPUT_READABLE_ACCELGYRO
+    // // display tab-separated accel/gyro x/y/z values
+    // //Serial.print("a/g:\t");
+    // // Serial.print("ax");
+    // Serial.print(ax);
+    // Serial.print("\t");
+    // //Serial.print("ay");
+    // Serial.print(ay);
+    // Serial.print("\t");
+    // //Serial.print("az");
+    // Serial.print(az);
+    // Serial.print("\t");
+    // //Serial.print("gx");
+    // Serial.print(gx);
+    // Serial.print("\t");
+    // //Serial.print("gy");
+    // Serial.print(gy);
+    // Serial.print("\t");
+    // //Serial.print("gz");
+    // Serial.print(gz);
+    // Serial.print("\t");
+    // #endif
+    
+    // #ifdef OUTPUT_BINARY_ACCELGYRO
+    // Serial.write((uint8_t)(ax >> 8));
+    // Serial.write((uint8_t)(ax & 0xFF));
+    // Serial.write((uint8_t)(ay >> 8));
+    // Serial.write((uint8_t)(ay & 0xFF));
+    // Serial.write((uint8_t)(az >> 8));
+    // Serial.write((uint8_t)(az & 0xFF));
+    // Serial.write((uint8_t)(gx >> 8));
+    // Serial.write((uint8_t)(gx & 0xFF));
+    // Serial.write((uint8_t)(gy >> 8));
+    // Serial.write((uint8_t)(gy & 0xFF));
+    // Serial.write((uint8_t)(gz >> 8));
+    // Serial.write((uint8_t)(gz & 0xFF));
+    // #endif
 
+    //Serial.println(bmp.readAltitude(101500));
 
-// #ifdef OUTPUT_READABLE_ACCELGYRO
-//   // display tab-separated accel/gyro x/y/z values
-//   //Serial.print("a/g:\t");
-//   // Serial.print("ax");
-//   Serial.print(ax);
-//   Serial.print("\t");
-//   //Serial.print("ay");
-//   Serial.print(ay);
-//   Serial.print("\t");
-//   //Serial.print("az");
-//   Serial.print(az);
-//   Serial.print("\t");
-//   //Serial.print("gx");
-//   Serial.print(gx);
-//   Serial.print("\t");
-//   //Serial.print("gy");
-//   Serial.print(gy);
-//   Serial.print("\t");
-//   //Serial.print("gz");
-//   Serial.print(gz);
-//   Serial.print("\t");
-// #endif
-  
-// #ifdef OUTPUT_BINARY_ACCELGYRO
-//   Serial.write((uint8_t)(ax >> 8));
-//   Serial.write((uint8_t)(ax & 0xFF));
-//   Serial.write((uint8_t)(ay >> 8));
-//   Serial.write((uint8_t)(ay & 0xFF));
-//   Serial.write((uint8_t)(az >> 8));
-//   Serial.write((uint8_t)(az & 0xFF));
-//   Serial.write((uint8_t)(gx >> 8));
-//   Serial.write((uint8_t)(gx & 0xFF));
-//   Serial.write((uint8_t)(gy >> 8));
-//   Serial.write((uint8_t)(gy & 0xFF));
-//   Serial.write((uint8_t)(gz >> 8));
-//   Serial.write((uint8_t)(gz & 0xFF));
-// #endif
-
-// Serial.println(bmp.readAltitude(101500));
-
-  // blink LED to indicate activity
-  blinkState = !blinkState;
-  digitalWrite(LED_PIN, blinkState);
+    // blink LED to indicate activity
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
 }
