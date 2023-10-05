@@ -44,9 +44,7 @@ Adafruit_BMP085 bmp;
 bool blinkState = false;
 
 File dataFile;
-
 String fileName = "/Rocket00";
-
 const int chipSelect = 5;
 
 void setup() {
@@ -151,6 +149,7 @@ void setup() {
 
     dataFile.println(headerString);
     dataFile.flush();
+
 }
 
 void loop() {
@@ -160,8 +159,8 @@ void loop() {
     // these methods (and a few others) are also available
     // accelgyro.getAcceleration(&ax, &ay, &az);
     // accelgyro.getRotation(&gx, &gy, &gz);
-
     String dataString = "";
+    
     dataString += String(millis()).c_str();
     dataString += "\t";
     dataString += String(bmp.readAltitude(101500)).c_str();
