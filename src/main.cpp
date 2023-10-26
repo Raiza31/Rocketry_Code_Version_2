@@ -4,11 +4,14 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "Adafruit_BMP085.h"
-#include "SdFat.h"
+#include "SD.h"
 #include "SPI.h"
+#include "FS.h"
+#include <TinyPICO.h>
+//#include <LoRa.h>
 
 //Use SDFat in order to utilize certain functions
-SdFat SD;
+//SdFat SD;
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -40,12 +43,22 @@ Adafruit_BMP085 bmp;
 //#define OUTPUT_BINARY_ACCELGYRO
 
 
-#define LED_PIN 13
-bool blinkState = false;
+// #define LED_PIN 13
+// bool blinkState = false;
 
 File dataFile;
 String fileName = "/Rocket00";
 const int chipSelect = 5;
+
+unsigned long previousMillis = millis();
+long interval = 1000;
+
+TinyPICO tp = TinyPICO();
+
+//define the pins used by the transceiver module
+// #define ss 5
+// #define rst 14
+// #define dio0 2
 
 void setup() {
 
@@ -66,6 +79,8 @@ void setup() {
 
     if (!bmp.begin()) {
         Serial.println("Could not find a valid BMP085 sensor, check wiring!");
+        // You can set the DotStar LED colour directly using r,g,b values
+        tp.DotStar_SetPixelColor(255, 255, 0 );
         while (1) {}
     } else {
         Serial.println("BMP180 connection successful");
@@ -78,7 +93,15 @@ void setup() {
 
     // verify connection
     Serial.println("Testing device connections...");
-    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
+    if (!accelgyro.testConnection()) {
+        Serial.println("MPU6050 connection failed");
+        // You can set the DotStar LED colour directly using r,g,b values
+        tp.DotStar_SetPixelColor( 0, 0, 255);
+        while (1) {}
+    } else {
+        Serial.println("MPU6050 connection successful");
+    }
     accelgyro.setFullScaleAccelRange(3);
     //Serial.println(accelgyro.getFullScaleAccelRange());
 
@@ -113,20 +136,23 @@ void setup() {
     // see if the card is present and can be initialized:
     if (!SD.begin(chipSelect)) {
         Serial.println("Card failed, or not present");
+        // You can set the DotStar LED colour directly using r,g,b values
+        tp.DotStar_SetPixelColor( 255, 0, 255 );
         // don't do anything more:
-        while (1);
+        while(1);
     }
     Serial.println("card initialized.");
 
     for(int i = 1; i < 100; i++){
-      if(SD.exists(String(fileName + i + ".txt").c_str())){
-          dataFile = SD.open(String(fileName + (i+1) + ".txt").c_str(), FILE_WRITE);
+      if(!SD.exists(String(fileName + i + ".txt").c_str())){
+          dataFile = SD.open(String(fileName + i + ".txt").c_str(), FILE_WRITE);
+          Serial.println(String(fileName + i + ".txt"));
           break;
       }
     }
 
     if (!dataFile) {
-        Serial.println("error opening datalog.txt");
+        Serial.println("error opening Datalog");
         while(1);
     }
 
@@ -150,16 +176,47 @@ void setup() {
     dataFile.println(headerString);
     dataFile.flush();
 
+    //setup LoRa transceiver module
+    //LoRa.setPins(ss, rst, dio0);
+  
+    //replace the LoRa.begin(---E-) argument with your location's frequency 
+    //433E6 for Asia
+    //866E6 for Europe
+    //915E6 for North America
+    // while (!LoRa.begin(915E6)) {
+    //     Serial.println(".");
+    //     delay(500);
+    // }
+    // Change sync word (0xF3) to match the receiver
+    // The sync word assures you don't get LoRa messages from other LoRa transceivers
+    // ranges from 0-0xFF
+    // LoRa.setSyncWord(0xF3);
+    // Serial.println("LoRa Initializing OK!");
+
+    // You can set the DotStar LED colour directly using r,g,b values
+    tp.DotStar_SetPixelColor( 0, 255, 0 );
 }
 
 void loop() {
+    String dataString = "";
+    // unsigned long currentMillis = millis();
+
+    // if(currentMillis - previousMillis > interval){
+    //     previousMillis = currentMillis;
+
+    //     LoRa.beginPacket();
+    //     LoRa.print("Altitude: ");
+    //     LoRa.print(bmp.readAltitude(101500));
+    //     LoRa.endPacket();
+
+    // }
     // read raw accel/gyro measurements from device
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
     // these methods (and a few others) are also available
     // accelgyro.getAcceleration(&ax, &ay, &az);
     // accelgyro.getRotation(&gx, &gy, &gz);
-    String dataString = "";
+
     
     dataString += String(millis()).c_str();
     dataString += "\t";
@@ -178,7 +235,6 @@ void loop() {
     dataString += String(gz).c_str();
 
     dataFile.println(dataString);
-
     dataFile.flush();
 
     // #ifdef OUTPUT_READABLE_ACCELGYRO
@@ -222,6 +278,6 @@ void loop() {
     //Serial.println(bmp.readAltitude(101500));
 
     // blink LED to indicate activity
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
+    // blinkState = !blinkState;
+    // digitalWrite(LED_PIN, blinkState);
 }
