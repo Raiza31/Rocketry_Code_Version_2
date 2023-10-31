@@ -8,10 +8,7 @@
 #include "SPI.h"
 #include "FS.h"
 #include <TinyPICO.h>
-//#include <LoRa.h>
-
-//Use SDFat in order to utilize certain functions
-//SdFat SD;
+#include <LoRa.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -47,7 +44,7 @@ Adafruit_BMP085 bmp;
 // bool blinkState = false;
 
 File dataFile;
-String fileName = "/Rocket00";
+String fileName = "/Rocket";
 const int chipSelect = 5;
 
 unsigned long previousMillis = millis();
@@ -56,9 +53,9 @@ long interval = 1000;
 TinyPICO tp = TinyPICO();
 
 //define the pins used by the transceiver module
-// #define ss 5
-// #define rst 14
-// #define dio0 2
+#define ss 27
+#define rst 26
+#define dio0 25
 
 void setup() {
 
@@ -177,39 +174,44 @@ void setup() {
     dataFile.flush();
 
     //setup LoRa transceiver module
-    //LoRa.setPins(ss, rst, dio0);
+    LoRa.setPins(ss, rst, dio0);
   
     //replace the LoRa.begin(---E-) argument with your location's frequency 
     //433E6 for Asia
     //866E6 for Europe
     //915E6 for North America
-    // while (!LoRa.begin(915E6)) {
-    //     Serial.println(".");
-    //     delay(500);
-    // }
+    while (!LoRa.begin(915E6)) {
+        tp.DotStar_SetPixelColor( 255, 165, 0 );
+        Serial.print(".");
+        delay(500);
+    }
     // Change sync word (0xF3) to match the receiver
     // The sync word assures you don't get LoRa messages from other LoRa transceivers
     // ranges from 0-0xFF
-    // LoRa.setSyncWord(0xF3);
-    // Serial.println("LoRa Initializing OK!");
+    LoRa.setSyncWord(0xF3);
+    Serial.println("LoRa Initializing OK!");
 
     // You can set the DotStar LED colour directly using r,g,b values
     tp.DotStar_SetPixelColor( 0, 255, 0 );
+    delay(5000);
+    tp.DotStar_Clear();
 }
 
 void loop() {
     String dataString = "";
-    // unsigned long currentMillis = millis();
+    unsigned long currentMillis = millis();
 
-    // if(currentMillis - previousMillis > interval){
-    //     previousMillis = currentMillis;
+    if(currentMillis - previousMillis > interval){
+        previousMillis = currentMillis;
+        
+        Serial.println("Sending");
 
-    //     LoRa.beginPacket();
-    //     LoRa.print("Altitude: ");
-    //     LoRa.print(bmp.readAltitude(101500));
-    //     LoRa.endPacket();
+        LoRa.beginPacket();
+        LoRa.print("Altitude: ");
+        LoRa.print(String(bmp.readAltitude(101500)));
+        LoRa.endPacket();
 
-    // }
+    }
     // read raw accel/gyro measurements from device
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
