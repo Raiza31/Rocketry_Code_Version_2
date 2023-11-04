@@ -28,21 +28,6 @@ int16_t gx, gy, gz;
 
 Adafruit_BMP085 bmp;
 
-// uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
-// list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
-// not so easy to parse, and slow(er) over UART.
-#define OUTPUT_READABLE_ACCELGYRO
-
-// uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
-// binary, one right after the other. This is very fast (as fast as possible
-// without compression or data loss), and easy to parse, but impossible to read
-// for a human.
-//#define OUTPUT_BINARY_ACCELGYRO
-
-
-// #define LED_PIN 13
-// bool blinkState = false;
-
 File dataFile;
 String fileName = "/Rocket";
 const int chipSelect = 5;
@@ -57,8 +42,10 @@ TinyPICO tp = TinyPICO();
 #define rst 26
 #define dio0 25
 
-void setup() {
+String LoRaData = "";
+bool once = false;
 
+void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     Wire.begin();
@@ -70,19 +57,16 @@ void setup() {
     // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
     // it's really up to you depending on your project)
     Serial.begin(115200);
-    while (!Serial) {
-        ; // wait for serial port to connect. Needed for native USB port only
-    }
+    while(!Serial); // wait for serial port to connect. Needed for native USB port only
 
+    //initialize bmp
     if (!bmp.begin()) {
         Serial.println("Could not find a valid BMP085 sensor, check wiring!");
-        // You can set the DotStar LED colour directly using r,g,b values
-        tp.DotStar_SetPixelColor(255, 255, 0 );
-        while (1) {}
+        tp.DotStar_SetPixelColor(255, 255, 0 );//purple
+        while (1);
     } else {
         Serial.println("BMP180 connection successful");
     }
-
 
     // initialize device
     Serial.println("Initializing I2C devices...");
@@ -90,20 +74,16 @@ void setup() {
 
     // verify connection
     Serial.println("Testing device connections...");
-
     if (!accelgyro.testConnection()) {
         Serial.println("MPU6050 connection failed");
-        // You can set the DotStar LED colour directly using r,g,b values
-        tp.DotStar_SetPixelColor( 0, 0, 255);
+        tp.DotStar_SetPixelColor( 0, 0, 255);//blue
         while (1) {}
     } else {
         Serial.println("MPU6050 connection successful");
     }
     accelgyro.setFullScaleAccelRange(3);
-    //Serial.println(accelgyro.getFullScaleAccelRange());
 
-    // use the code below to change accel/gyro offset values
-    /*
+    /* use the code below to change accel/gyro offset values
     Serial.println("Updating internal sensor offsets...");
     // -76	-2359	1688	0	0	0
     Serial.print(accelgyro.getXAccelOffset()); Serial.print("\t"); // -76
@@ -125,16 +105,12 @@ void setup() {
     Serial.print("\n");
     */
 
-    // configure Arduino LED pin for output
-    //pinMode(LED_PIN, OUTPUT);
-
     Serial.print("Initializing SD card...");
 
     // see if the card is present and can be initialized:
     if (!SD.begin(chipSelect)) {
         Serial.println("Card failed, or not present");
-        // You can set the DotStar LED colour directly using r,g,b values
-        tp.DotStar_SetPixelColor( 255, 0, 255 );
+        tp.DotStar_SetPixelColor( 255, 0, 255 );//purple
         // don't do anything more:
         while(1);
     }
@@ -181,105 +157,90 @@ void setup() {
     //866E6 for Europe
     //915E6 for North America
     while (!LoRa.begin(915E6)) {
-        tp.DotStar_SetPixelColor( 255, 165, 0 );
+        tp.DotStar_SetPixelColor( 255, 165, 0 );//orange
         Serial.print(".");
         delay(500);
     }
     // Change sync word (0xF3) to match the receiver
     // The sync word assures you don't get LoRa messages from other LoRa transceivers
     // ranges from 0-0xFF
-    LoRa.setSyncWord(0xF3);
+    LoRa.setSyncWord(0xA1);
     Serial.println("LoRa Initializing OK!");
 
-    // You can set the DotStar LED colour directly using r,g,b values
-    tp.DotStar_SetPixelColor( 0, 255, 0 );
+    tp.DotStar_SetPixelColor( 0, 255, 0 );//green
     delay(5000);
-    tp.DotStar_Clear();
+    tp.DotStar_Clear();//turn off light
 }
 
-void loop() {
+void loop() {   
     String dataString = "";
-    unsigned long currentMillis = millis();
 
-    if(currentMillis - previousMillis > interval){
-        previousMillis = currentMillis;
+    int packetSize = LoRa.parsePacket();
+    if(packetSize) {    // received a packet
+        Serial.print("Received packet: ");
+        // read packet
+        while (LoRa.available()) {
+            LoRaData = LoRa.readString();
+            Serial.println(LoRaData);
+            once = true;
+        }
+    }
+    
+    if(LoRaData == "Log"){
+        if(once){
+            tp.DotStar_SetPixelColor( 0, 255, 0);//green
+            delay(2500);
+            tp.DotStar_Clear();//turn off light
+            once = false;
+        }
+
+        unsigned long currentMillis = millis();
+
+        if(currentMillis - previousMillis > interval){
+            previousMillis = currentMillis;
+            
+            Serial.println("Sending");
+
+            LoRa.beginPacket();
+            LoRa.print("Altitude: ");
+            LoRa.print(String(bmp.readAltitude(101500)));
+            LoRa.endPacket();
+
+        }
         
-        Serial.println("Sending");
+        // read raw accel/gyro measurements from device
+        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
+        // these methods (and a few others) are also available
+        // accelgyro.getAcceleration(&ax, &ay, &az);
+        // accelgyro.getRotation(&gx, &gy, &gz);
+
+        
+        dataString += String(millis()).c_str();
+        dataString += "\t";
+        dataString += String(bmp.readAltitude(101500)).c_str();
+        dataString += "\t";
+        dataString += String(ax).c_str();
+        dataString += "\t";
+        dataString += String(ay).c_str();
+        dataString += "\t";
+        dataString += String(az).c_str();
+        dataString += "\t";
+        dataString += String(gx).c_str();
+        dataString += "\t";
+        dataString += String(gy).c_str();
+        dataString += "\t";
+        dataString += String(gz).c_str();
+
+        dataFile.println(dataString);
+        dataFile.flush();
+    }
+    
+    if(LoRaData == "Stop" && once == true){
         LoRa.beginPacket();
-        LoRa.print("Altitude: ");
-        LoRa.print(String(bmp.readAltitude(101500)));
+        LoRa.print("Stopped");
         LoRa.endPacket();
 
+        once = false;
     }
-    // read raw accel/gyro measurements from device
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-    // these methods (and a few others) are also available
-    // accelgyro.getAcceleration(&ax, &ay, &az);
-    // accelgyro.getRotation(&gx, &gy, &gz);
-
-    
-    dataString += String(millis()).c_str();
-    dataString += "\t";
-    dataString += String(bmp.readAltitude(101500)).c_str();
-    dataString += "\t";
-    dataString += String(ax).c_str();
-    dataString += "\t";
-    dataString += String(ay).c_str();
-    dataString += "\t";
-    dataString += String(az).c_str();
-    dataString += "\t";
-    dataString += String(gx).c_str();
-    dataString += "\t";
-    dataString += String(gy).c_str();
-    dataString += "\t";
-    dataString += String(gz).c_str();
-
-    dataFile.println(dataString);
-    dataFile.flush();
-
-    // #ifdef OUTPUT_READABLE_ACCELGYRO
-    // // display tab-separated accel/gyro x/y/z values
-    // //Serial.print("a/g:\t");
-    // // Serial.print("ax");
-    // Serial.print(ax);
-    // Serial.print("\t");
-    // //Serial.print("ay");
-    // Serial.print(ay);
-    // Serial.print("\t");
-    // //Serial.print("az");
-    // Serial.print(az);
-    // Serial.print("\t");
-    // //Serial.print("gx");
-    // Serial.print(gx);
-    // Serial.print("\t");
-    // //Serial.print("gy");
-    // Serial.print(gy);
-    // Serial.print("\t");
-    // //Serial.print("gz");
-    // Serial.print(gz);
-    // Serial.print("\t");
-    // #endif
-    
-    // #ifdef OUTPUT_BINARY_ACCELGYRO
-    // Serial.write((uint8_t)(ax >> 8));
-    // Serial.write((uint8_t)(ax & 0xFF));
-    // Serial.write((uint8_t)(ay >> 8));
-    // Serial.write((uint8_t)(ay & 0xFF));
-    // Serial.write((uint8_t)(az >> 8));
-    // Serial.write((uint8_t)(az & 0xFF));
-    // Serial.write((uint8_t)(gx >> 8));
-    // Serial.write((uint8_t)(gx & 0xFF));
-    // Serial.write((uint8_t)(gy >> 8));
-    // Serial.write((uint8_t)(gy & 0xFF));
-    // Serial.write((uint8_t)(gz >> 8));
-    // Serial.write((uint8_t)(gz & 0xFF));
-    // #endif
-
-    //Serial.println(bmp.readAltitude(101500));
-
-    // blink LED to indicate activity
-    // blinkState = !blinkState;
-    // digitalWrite(LED_PIN, blinkState);
 }
