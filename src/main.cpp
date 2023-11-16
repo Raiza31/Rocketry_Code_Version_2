@@ -9,6 +9,7 @@
 #include "FS.h"
 #include <TinyPICO.h>
 #include <LoRa.h>
+#include <HardwareSerial.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -45,6 +46,12 @@ TinyPICO tp = TinyPICO();
 String LoRaData = "";
 bool once = false;
 
+//gps: Beitian BN-220
+//HardWare Serial(Tx=, Rx= on TinyPico)
+HardwareSerial hs;
+// The TinyGPSPlus object
+TinyGPSPlus gps;
+
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -54,15 +61,14 @@ void setup() {
     #endif
 
     // initialize serial communication
-    // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
-    // it's really up to you depending on your project)
     Serial.begin(115200);
+    hs.begin(9600, SERIAL_8N1, 33, 32);
     while(!Serial); // wait for serial port to connect. Needed for native USB port only
 
     //initialize bmp
     if (!bmp.begin()) {
         Serial.println("Could not find a valid BMP085 sensor, check wiring!");
-        tp.DotStar_SetPixelColor(255, 255, 0 );//purple
+        tp.DotStar_SetPixelColor(255, 255, 0);//yellow
         while (1);
     } else {
         Serial.println("BMP180 connection successful");
@@ -71,7 +77,6 @@ void setup() {
     // initialize device
     Serial.println("Initializing I2C devices...");
     accelgyro.initialize();
-
     // verify connection
     Serial.println("Testing device connections...");
     if (!accelgyro.testConnection()) {
@@ -110,7 +115,7 @@ void setup() {
     // see if the card is present and can be initialized:
     if (!SD.begin(chipSelect)) {
         Serial.println("Card failed, or not present");
-        tp.DotStar_SetPixelColor( 255, 0, 255 );//purple
+        tp.DotStar_SetPixelColor( 255, 0, 255);//purple
         // don't do anything more:
         while(1);
     }
@@ -145,6 +150,14 @@ void setup() {
     headerString += "GyroY";
     headerString += "\t";
     headerString += "GyroZ";
+    headerString += "\t";
+    headerString += "Sats";
+    headerString += "\t";
+    headerString += "HDOP";
+    headerString += "\t";
+    headerString += "Lat";
+    headerString += "\t";
+    headerString += "Long";
 
     dataFile.println(headerString);
     dataFile.flush();
@@ -157,7 +170,7 @@ void setup() {
     //866E6 for Europe
     //915E6 for North America
     while (!LoRa.begin(915E6)) {
-        tp.DotStar_SetPixelColor( 255, 165, 0 );//orange
+        tp.DotStar_SetPixelColor( 255, 165, 0);//orange
         Serial.print(".");
         delay(500);
     }
@@ -167,19 +180,36 @@ void setup() {
     LoRa.setSyncWord(0xA1);
     Serial.println("LoRa Initializing OK!");
 
-    tp.DotStar_SetPixelColor( 0, 255, 0 );//green
+    if(millis() > 5000 && gps.charsProcessed() < 10){
+        Serial.println(F("No GPS detected: check wiring."));
+        tp.DotStar_SetPixelColor( 0, 255, 255);//teal
+        while(true);
+    }
+
+    tp.DotStar_SetPixelColor( 0, 255, 0);//green
     delay(5000);
     tp.DotStar_Clear();//turn off light
 }
 
-void loop() {   
+void logInfo(){
+  Serial.print(F("Location: ")); 
+  if (gps.location.isValid()){
+    dataString += String(gps.location.lat(), 6).c_str();
+    dataString += String(gps.location.lng(), 6).c_str();
+  }
+  else{
+    Serial.print(F("INVALID"));
+  }
+}
+
+void loop() {
     String dataString = "";
 
     int packetSize = LoRa.parsePacket();
     if(packetSize) {    // received a packet
         Serial.print("Received packet: ");
         // read packet
-        while (LoRa.available()) {
+        while(LoRa.available()) {
             LoRaData = LoRa.readString();
             Serial.println(LoRaData);
             once = true;
@@ -210,11 +240,6 @@ void loop() {
         
         // read raw accel/gyro measurements from device
         accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-        // these methods (and a few others) are also available
-        // accelgyro.getAcceleration(&ax, &ay, &az);
-        // accelgyro.getRotation(&gx, &gy, &gz);
-
         
         dataString += String(millis()).c_str();
         dataString += "\t";
@@ -232,15 +257,27 @@ void loop() {
         dataString += "\t";
         dataString += String(gz).c_str();
 
+        if(hs.available() > 0){
+            logInfo();
+        }else{
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+            headerString += "\t";
+        }
+
         dataFile.println(dataString);
         dataFile.flush();
     }
     
-    if(LoRaData == "Stop" && once == true){
+    else if(LoRaData == "Stop" && once == true){
         LoRa.beginPacket();
         LoRa.print("Stopped");
         LoRa.endPacket();
-
         once = false;
     }
 }
