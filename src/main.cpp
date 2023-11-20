@@ -10,6 +10,7 @@
 #include <TinyPICO.h>
 #include <LoRa.h>
 #include <HardwareSerial.h>
+#include <TinyGPS++.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -32,6 +33,7 @@ Adafruit_BMP085 bmp;
 File dataFile;
 String fileName = "/Rocket";
 const int chipSelect = 5;
+String dataString = "";
 
 unsigned long previousMillis = millis();
 long interval = 1000;
@@ -47,8 +49,6 @@ String LoRaData = "";
 bool once = false;
 
 //gps: Beitian BN-220
-//HardWare Serial(Tx=, Rx= on TinyPico)
-HardwareSerial hs;
 // The TinyGPSPlus object
 TinyGPSPlus gps;
 
@@ -62,7 +62,7 @@ void setup() {
 
     // initialize serial communication
     Serial.begin(115200);
-    hs.begin(9600, SERIAL_8N1, 33, 32);
+    Serial2.begin(9600, SERIAL_8N1, 33, 32);
     while(!Serial); // wait for serial port to connect. Needed for native USB port only
 
     //initialize bmp
@@ -192,18 +192,17 @@ void setup() {
 }
 
 void logInfo(){
-  Serial.print(F("Location: ")); 
-  if (gps.location.isValid()){
     dataString += String(gps.location.lat(), 6).c_str();
+    dataString += "\t";
     dataString += String(gps.location.lng(), 6).c_str();
-  }
-  else{
-    Serial.print(F("INVALID"));
-  }
+    dataString += "\t";
+    dataString += String(gps.satellites.value(), 6).c_str();
+    dataString += "\t";
+    dataString += String(gps.hdop.hdop(), 6).c_str();
 }
 
 void loop() {
-    String dataString = "";
+    dataString = "";
 
     int packetSize = LoRa.parsePacket();
     if(packetSize) {    // received a packet
@@ -233,9 +232,18 @@ void loop() {
 
             LoRa.beginPacket();
             LoRa.print("Altitude: ");
-            LoRa.print(String(bmp.readAltitude(101500)));
+            LoRa.println(String(bmp.readAltitude(101500)));
+            if(Serial2.available() > 0){
+                    LoRa.print("Lat: ");
+                    LoRa.println(String(gps.location.lat(), 6));
+                    LoRa.print("Long: ");
+                    LoRa.println(String(gps.location.lng(), 6));
+                    LoRa.print("SAT: ");
+                    LoRa.println(String(gps.satellites.value(), 6));
+                    LoRa.print("HDOP: ");
+                    LoRa.println(String(gps.hdop.hdop(), 6));
+            }
             LoRa.endPacket();
-
         }
         
         // read raw accel/gyro measurements from device
@@ -245,11 +253,11 @@ void loop() {
         dataString += "\t";
         dataString += String(bmp.readAltitude(101500)).c_str();
         dataString += "\t";
-        dataString += String(ax).c_str();
+        dataString += String((ax/2048) * 9.8).c_str();
         dataString += "\t";
-        dataString += String(ay).c_str();
+        dataString += String((ay/2048) * 9.8).c_str();
         dataString += "\t";
-        dataString += String(az).c_str();
+        dataString += String((az/2048) * 9.8).c_str();
         dataString += "\t";
         dataString += String(gx).c_str();
         dataString += "\t";
@@ -257,24 +265,23 @@ void loop() {
         dataString += "\t";
         dataString += String(gz).c_str();
 
-        if(hs.available() > 0){
+        if(Serial2.available() > 0 && gps.encode(Serial2.read())){
             logInfo();
-        }else{
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
-            headerString += "\t";
         }
-
+        else{
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+            dataString += "\t";
+        }
         dataFile.println(dataString);
         dataFile.flush();
     }
-    
-    else if(LoRaData == "Stop" && once == true){
+    if(LoRaData == "Stop" && once == true){
         LoRa.beginPacket();
         LoRa.print("Stopped");
         LoRa.endPacket();
