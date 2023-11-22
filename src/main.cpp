@@ -192,13 +192,14 @@ void setup() {
 }
 
 void logInfo(){
+    dataString += "\t";
     dataString += String(gps.location.lat(), 6).c_str();
     dataString += "\t";
     dataString += String(gps.location.lng(), 6).c_str();
     dataString += "\t";
-    dataString += String(gps.satellites.value(), 6).c_str();
+    dataString += String(gps.satellites.value(), 2).c_str();
     dataString += "\t";
-    dataString += String(gps.hdop.hdop(), 6).c_str();
+    dataString += String(gps.hdop.hdop(), 2).c_str();
 }
 
 void loop() {
