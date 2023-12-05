@@ -86,6 +86,8 @@ void setup() {
     } else {
         Serial.println("MPU6050 connection successful");
     }
+    accelgyro.CalibrateAccel();
+    accelgyro.CalibrateGyro();
     accelgyro.setFullScaleAccelRange(3);
 
     /* use the code below to change accel/gyro offset values
